@@ -7,5 +7,5 @@ The purpose of this repository is to reimplement the python code examples of the
 
 ```
 # You may want to export REDIS_HOST, REDIS_PORT, REDIS_PASSWORD, REDIS_DB
-$ go run utils/load.go data/ru101.json
+$ go run main.go -seed=data/ru101.json
 ```

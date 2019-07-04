@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"bufio"
@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/go-redis/redis"
 )
 
+// Row reprensents a row of the ru data files
 type Row struct {
 	K   string      `json:"k"`
 	V   interface{} `json:"v"`
@@ -21,6 +21,14 @@ type Row struct {
 	TTL int         `json:"ttl"`
 }
 
+// ParseRow ...
+func ParseRow(row []byte) *Row {
+	r := Row{}
+	json.Unmarshal(row, &r)
+	return &r
+}
+
+// Load process the Row and loads it via a redis Pipeline
 func (r *Row) Load(p redis.Pipeliner) {
 	// log.Println(r.T)
 	switch r.T {
@@ -73,63 +81,27 @@ func (r *Row) Load(p redis.Pipeliner) {
 	}
 }
 
-func getEnv(key, fallback string) string {
-	if value, ok := os.LookupEnv(key); ok {
-		return value
+// LoadFromFile ...
+func LoadFromFile(fn string) {
+	file, ferr := os.Open(fn)
+	if ferr != nil {
+		log.Fatal(ferr)
+		return
 	}
-	return fallback
-}
+	defer file.Close()
 
-func BuildRedisOptions() *redis.Options {
-	host := getEnv("REDIS_HOST", "localhost")
-	port := getEnv("REDIS_PORT", "6379")
-	db, err := strconv.Atoi(getEnv("REDIS_DB", "0"))
-	if err != nil {
-		db = 0
-	}
-	opts := redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", host, port),
-		Password: getEnv("REDIS_PASSWORD", ""),
-		DB:       db,
-	}
-	return &opts
-}
-
-func BuildRedisClient(opts *redis.Options) *redis.Client {
-	client := redis.NewClient(opts)
-	pong, err := client.Ping().Result()
-	log.Println(pong, err)
-	return client
-}
-
-func main() {
-	log.Println("Started")
-
-	rclient := BuildRedisClient(BuildRedisOptions())
+	rclient := BuildRedisClient(BuildRedisOptions(), true)
 	defer rclient.Close()
 
 	rpipeline := rclient.Pipeline()
 	defer rpipeline.Close()
 
-	// Take file as input
-	fn := os.Args[1]
-	log.Println(fn)
-	file, ferr := os.Open(fn)
-	if ferr != nil {
-		log.Fatal(ferr)
-	}
-	defer file.Close()
-
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		r := Row{}
-		json.Unmarshal(scanner.Bytes(), &r)
-		r.Load(rpipeline)
+		ParseRow(scanner.Bytes()).Load(rpipeline)
 	}
 
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
-
-	log.Println("Completed")
 }
