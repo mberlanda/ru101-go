@@ -74,11 +74,6 @@ func (r *Row) Load(p redis.Pipeliner) {
 	if r.TTL > 0 {
 		p.Expire(r.K, time.Duration(r.TTL))
 	}
-	_, err := p.Exec()
-
-	if err != nil {
-		log.Fatalln(err)
-	}
 }
 
 // LoadFromFile ...
@@ -96,12 +91,29 @@ func LoadFromFile(fn string) {
 	rpipeline := rclient.Pipeline()
 	defer rpipeline.Close()
 
+	batchSize := 100
+	counter := 0
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		ParseRow(scanner.Bytes()).Load(rpipeline)
+		counter++
+		if counter%batchSize == 0 {
+			_, err := rpipeline.Exec()
+
+			if err != nil {
+				log.Fatalln(err)
+			}
+		}
+	}
+	_, err := rpipeline.Exec()
+
+	if err != nil {
+		log.Fatalln(err)
 	}
 
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
+
+	log.Printf("total keys loaded: %d", counter)
 }
